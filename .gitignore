@@ -1,0 +1,16 @@
+# Nothing here is built or installed, so this list is short on purpose.
+__pycache__/
+*.pyc
+
+# Editor and OS litter
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Never commit a Firebase service-account key. The web API key in app.js is
+# public by design and is safe here; a service-account key is the opposite.
+*service*account*.json
+.env
+.env.*

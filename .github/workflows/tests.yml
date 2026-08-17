@@ -1,0 +1,21 @@
+# The barcode arithmetic is the one part of this page that is silently wrong when
+# it is wrong: a bad check-digit routine still accepts and still saves, and the
+# damage only appears weeks later at the till. So it runs on every push.
+#
+# No dependencies to install and nothing to build — that is the whole design of
+# this folder.
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  barcode:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: node __tests__/barcode.check.mjs

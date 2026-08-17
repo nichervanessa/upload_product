@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<title>Add Products — RetailOS Pro</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header>
+  <div class="brand">RetailOS <span>· Add Products</span></div>
+  <div class="who-box">
+    <span id="who" class="muted"></span>
+    <button id="signOut" type="button" class="ghost">Sign out</button>
+  </div>
+</header>
+
+<!-- ── Opened from the wrong place ──────────────────────────────────────────
+     This page is published on GitHub as well as served by the shop, and the
+     published copy CANNOT work: a page loaded over https is not allowed by any
+     browser to call a plain http address on the local network, so every request
+     to the till would be blocked before it left the phone.
+
+     That block produces no error a person can act on — the form simply never
+     saves. So say it here instead, with the address that does work. -->
+<main id="hosted" hidden>
+  <div class="card narrow">
+    <h1>Open this from the shop computer</h1>
+    <p>You are looking at the published copy of this page. It cannot reach your
+      shop's system from here — a secure page is not allowed to talk to a plain
+      address on your own network, and the browser blocks it silently.</p>
+    <p><b>On a phone connected to the shop's Wi-Fi, open:</b></p>
+    <p class="mono addr">http://<span id="hostedIp">SHOP-PC-IP</span>:8000/add</p>
+    <p class="muted small">To find the address, on the shop computer press
+      <b>Windows + R</b>, type <b>cmd</b>, then type <b>ipconfig</b> and read the
+      IPv4 Address — it looks like 192.168.1.50. The shop's system must be
+      running, and the phone must be on the same Wi-Fi.</p>
+  </div>
+</main>
+
+<!-- ── Sign in ─────────────────────────────────────────────────────────────
+     The same staff account used on the desktop. Adding a product needs the
+     warehouse or admin role, which the backend checks — so a cashier can sign
+     in here and will be refused the save, with a message saying why. -->
+<main id="login" hidden>
+  <form id="loginForm" class="card narrow">
+    <h1>Sign in</h1>
+    <p class="muted">Use your normal staff account. You need the warehouse or
+      admin role to add products.</p>
+    <label>Email
+      <input id="email" type="email" autocomplete="username" required>
+    </label>
+    <label>Password
+      <input id="password" type="password" autocomplete="current-password" required>
+    </label>
+    <button id="loginBtn" class="primary" type="submit">Sign in</button>
+  </form>
+</main>
+
+<main id="app" hidden>
+  <form id="productForm" class="card" autocomplete="off">
+
+    <!-- ── Barcode first ───────────────────────────────────────────────────
+         Deliberately at the top. It is the one field that can tell you the
+         product is ALREADY in stock, and finding that out before filling in
+         eleven others is the difference between ten seconds and two minutes. -->
+    <fieldset>
+      <legend>Barcode</legend>
+      <div class="inline">
+        <input id="barcode" inputmode="numeric" placeholder="Scan or type"
+               class="mono grow" autocomplete="off">
+        <button id="scanBtn" type="button" class="ghost" hidden>Scan</button>
+      </div>
+      <p id="barcodeNote" class="note"></p>
+      <button id="barcodeFix" type="button" class="fix" hidden></button>
+      <p id="dupe" class="dupe" hidden></p>
+      <p id="scanHint" class="muted small"></p>
+    </fieldset>
+
+    <fieldset>
+      <legend>What it is</legend>
+      <label>Name <span class="req">*</span>
+        <input id="name" required maxlength="200">
+      </label>
+      <label>Other name <span class="muted small">(what customers call it)</span>
+        <input id="generic_name" maxlength="200">
+      </label>
+      <div class="grid2">
+        <label>Category
+          <select id="category_id"></select>
+        </label>
+        <label>Supplier
+          <select id="supplier_id"></select>
+        </label>
+      </div>
+      <label>Notes
+        <textarea id="description" rows="2" maxlength="500"></textarea>
+      </label>
+    </fieldset>
+
+    <!-- ── Photo ───────────────────────────────────────────────────────────
+         `capture="environment"` opens the rear camera directly on a phone
+         rather than the file picker. Every photo is shrunk to 400px in the
+         browser before it is sent: a phone camera gives 3–8 MB, and 200 of
+         those is a database nothing can back up. -->
+    <fieldset>
+      <legend>Photo</legend>
+      <div class="inline">
+        <label class="filebtn">
+          Take photo
+          <input id="photo" type="file" accept="image/*" capture="environment" hidden>
+        </label>
+        <button id="clearPhoto" type="button" class="ghost">Remove</button>
+      </div>
+      <img id="preview" alt="" hidden>
+      <p id="photoNote" class="muted small"></p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Prices</legend>
+      <label>Price currency
+        <select id="price_currency">
+          <option value="IQD">IQD — Iraqi dinar</option>
+          <option value="USD">USD — US dollar</option>
+        </select>
+      </label>
+      <div class="grid3">
+        <label>Cost <span id="costUnit" class="unit">IQD</span>
+          <input id="purchase_price" type="number" min="0" step="0.01" inputmode="decimal">
+        </label>
+        <label>Floor <span id="floorUnit" class="unit">IQD</span>
+          <input id="limit_price" type="number" min="0" step="0.01" inputmode="decimal">
+        </label>
+        <label>Selling <span id="sellUnit" class="unit">IQD</span>
+          <input id="selling_price" type="number" min="0" step="0.01" inputmode="decimal">
+        </label>
+      </div>
+      <p id="currencyHint" class="muted small"></p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Stock</legend>
+      <div class="grid3">
+        <label>Quantity
+          <input id="quantity" type="number" min="0" step="1" inputmode="numeric" value="0">
+        </label>
+        <label>Alert below
+          <input id="min_stock" type="number" min="0" step="1" inputmode="numeric" value="5">
+        </label>
+        <label>Unit
+          <input id="unit" placeholder="pcs" maxlength="50">
+        </label>
+      </div>
+      <div class="grid3">
+        <label>Expiry
+          <input id="expiry_date" type="date">
+        </label>
+        <label>Batch
+          <input id="batch_number" maxlength="100">
+        </label>
+        <label>Shelf / location
+          <input id="location" maxlength="100">
+        </label>
+      </div>
+    </fieldset>
+
+    <!-- ── Pack and loose ──────────────────────────────────────────────────
+         Leaving "units per pack" at 1 means the product is only ever sold
+         whole, which is how every product behaves unless somebody says
+         otherwise. -->
+    <fieldset>
+      <legend>Selling single units</legend>
+      <div class="grid3">
+        <label>Units per pack
+          <input id="pack_size" type="number" min="1" step="1" inputmode="numeric" value="1">
+        </label>
+        <label>Unit name
+          <input id="loose_unit" placeholder="e.g. piece" maxlength="50">
+        </label>
+        <label class="check">
+          <input id="allow_loose_sale" type="checkbox">
+          Allow at the till
+        </label>
+      </div>
+    </fieldset>
+
+    <button id="saveBtn" class="primary big" type="submit">Save product</button>
+  </form>
+
+  <!-- ── Recently added ────────────────────────────────────────────────────
+       So somebody holding a carton can see it was done ten minutes ago by the
+       person across the room. With five people working one delivery, that is
+       where duplicates come from — and the barcode constraint only catches the
+       ones that share a barcode. -->
+  <section class="card">
+    <h2>Added from this device</h2>
+    <div id="recent" class="recent"></div>
+  </section>
+</main>
+
+<!-- Camera scanner -->
+<div id="scanPanel" class="scan" hidden>
+  <video id="scanVideo" playsinline muted></video>
+  <p>Point the camera at the barcode</p>
+  <button id="scanClose" type="button" class="ghost">Cancel</button>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
