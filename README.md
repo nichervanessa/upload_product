@@ -83,9 +83,9 @@ So, as you type:
 - **The catalogue is searched.** If the barcode already exists, the product it
   belongs to is shown with its stock on hand — because adding it again creates a
   second product the till cannot tell apart from the first.
-- **Camera scanning** where the browser can do it. Chrome on Android has a
-  built-in barcode reader; where it is missing the button hides itself rather
-  than pretending, and typing the digits works.
+- **Camera scanning**, where the browser allows it — see below. Where it does
+  not, pressing **Scan** says why and what to do instead, rather than showing a
+  dead black panel.
 
 The arithmetic is in `barcode.js` and pinned against real barcodes:
 
@@ -94,6 +94,42 @@ node __tests__/barcode.check.mjs
 ```
 
 No dependencies. Node 18 or newer.
+
+---
+
+## Camera scanning, and why it often will not start
+
+Two browser rules decide this, and both catch people out:
+
+1. A page may only use the camera in a **secure context** — `https`, or
+   `localhost`. Chrome's built-in barcode reader has the same requirement.
+2. **A local network address is not a secure context.** `http://192.168.1.50:8000`
+   is treated exactly like any other insecure page, however private the network
+   is. Nothing the page does can change that.
+
+So on the address your staff use, a phone will refuse this page the camera —
+silently. Press **Scan** and the panel now says which of the two problems it is
+and what to do about it. Three ways forward, best first:
+
+**1. A barcode scanner.** A USB or Bluetooth scanner types the digits like a
+keyboard: tap the Barcode box, then scan. No camera, no permission, nothing to
+configure, and faster than a phone in bad light. For a shop taking in deliveries
+this is the right tool regardless.
+
+**2. Trust the shop's address in Chrome — once per phone.** Open
+`chrome://flags/#unsafely-treat-insecure-origin-as-secure`, type
+`http://192.168.1.50:8000` (your own address) into the box, set it to
+**Enabled**, and relaunch Chrome. The camera and the reader both work after
+that. It has to be done on each phone.
+
+**3. Read a photo.** Where the browser has the reader but will not give a live
+camera, **Read a photo instead** appears in the Scan panel. It opens the phone's
+own camera app — which no page permission governs — and reads the barcode off
+the picture.
+
+On an iPhone, and in Firefox, there is no built-in reader at all and no setting
+adds one. Use a scanner, or type the digits — they are checked as you type, so a
+typo is caught before it is saved.
 
 ---
 

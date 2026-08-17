@@ -200,11 +200,21 @@
   </section>
 </main>
 
-<!-- Camera scanner -->
+<!-- ── Camera scanner ───────────────────────────────────────────────────────
+     The panel opens before the camera is asked for, so that a refusal has
+     somewhere to be explained. Browsers only allow a page the camera on https
+     or localhost — a local network address does not qualify — and they say
+     nothing about it, so this panel says it instead. -->
 <div id="scanPanel" class="scan" hidden>
-  <video id="scanVideo" playsinline muted></video>
-  <p>Point the camera at the barcode</p>
-  <button id="scanClose" type="button" class="ghost">Cancel</button>
+  <video id="scanVideo" playsinline autoplay muted hidden></video>
+  <p id="scanStatus" class="scanStatus"></p>
+  <div class="inline">
+    <label id="scanPhotoLabel" class="filebtn" hidden>
+      Read a photo instead
+      <input id="scanPhoto" type="file" accept="image/*" capture="environment" hidden>
+    </label>
+    <button id="scanClose" type="button" class="ghost">Close</button>
+  </div>
 </div>
 
 <div id="toast" class="toast" hidden></div>

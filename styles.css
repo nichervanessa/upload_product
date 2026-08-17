@@ -233,9 +233,35 @@ button:disabled { opacity: 0.5; cursor: default; }
 .scan video {
   width: 100%;
   max-width: 520px;
+  /* A minimum height so a stream that has not produced a frame yet is still a
+     visible box rather than a collapsed line — otherwise "nothing happened" and
+     "starting" look identical. */
+  min-height: 220px;
   border-radius: 16px;
   border: 2px solid var(--accent);
   background: #000;
+}
+
+/* The one line — or short explanation — under the camera. It carries the reason
+   the camera did not open, which is often several sentences, so it scrolls
+   rather than pushing the Close button off the screen. */
+.scanStatus {
+  max-width: 520px;
+  max-height: 55vh;
+  overflow-y: auto;
+  margin: 0;
+  text-align: left;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.scanStatus.warn { color: var(--warn); }
+.scanStatus .mono {
+  display: inline-block;
+  background: #16203a;
+  border-radius: 6px;
+  padding: 1px 5px;
+  font-size: 13px;
+  word-break: break-all;
 }
 
 /* ── Toast ─────────────────────────────────────────────────────────────────

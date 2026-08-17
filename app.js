@@ -229,54 +229,233 @@ async function lookupBarcode(code) {
 }
 
 /**
- * Scan with the phone camera, using the browser's own barcode reader.
+ * Reading a barcode with the camera — and saying why, when it cannot.
  *
- * BarcodeDetector is built into Chrome on Android, which is what the people
- * doing this will be holding. Where it is missing the button hides itself rather
- * than pretending — typing thirteen digits works, and a button that does nothing
- * is worse than no button.
+ * Two browser rules govern all of this, and both surprise people:
+ *
+ *   1. BarcodeDetector — the reader built into Chrome — exists ONLY in a secure
+ *      context. So does getUserMedia, which is how a page gets at the camera.
+ *   2. "Secure context" means https, or localhost. It does NOT mean a local
+ *      network address: http://192.168.1.50:8000 is not secure as far as the
+ *      browser is concerned, however private that network is.
+ *
+ * Which means that on the address the shop actually uses, a phone browser will
+ * not open the camera for this page at all — and it says nothing about it. The
+ * old version of this code hid the button in that case, and someone standing in
+ * a stockroom was left to guess whether their phone was broken.
+ *
+ * So the button is always there now, and pressing it always explains the
+ * situation: what is missing, and the two ways round it — pair a barcode
+ * scanner (they behave as a keyboard and need no camera permission at all), or
+ * mark the shop's address as trusted in Chrome, once per phone.
+ *
+ * When the camera IS available, this also reads a barcode out of a single
+ * photo — the file input opens the phone's own camera app, which is not subject
+ * to any of the above.
  */
-async function startScan() {
-  const video = $("scanVideo");
-  const panel = $("scanPanel");
-  let stream;
+
+function makeDetector() {
+  if (!("BarcodeDetector" in window)) return null;
+  const formats = ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "itf"];
   try {
-    const detector = new window.BarcodeDetector({
-      formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "itf"],
-    });
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment" },
-    });
-    panel.hidden = false;
-    video.srcObject = stream;
-    await video.play();
+    return new window.BarcodeDetector({ formats });
+  } catch {
+    // A browser that has the API but not all of those formats. Take its default
+    // set rather than refusing to scan at all.
+    try { return new window.BarcodeDetector(); } catch { return null; }
+  }
+}
 
-    const stop = () => {
-      panel.hidden = true;
-      video.pause();
-      stream.getTracks().forEach(t => t.stop());
-    };
-    $("scanClose").onclick = stop;
+/** Why the camera did not open, in words that say what to do next. */
+function cameraErrorText(e) {
+  const name = e?.name || "";
+  if (name === "NotAllowedError" || name === "SecurityError") {
+    return "The camera was blocked. Tap the padlock or camera icon in the "
+         + "browser's address bar, allow the camera, then try again.";
+  }
+  if (name === "NotFoundError" || name === "OverconstrainedError") {
+    return "No camera on this device. Type the barcode, or use a barcode "
+         + "scanner — they type the digits for you.";
+  }
+  if (name === "NotReadableError" || name === "AbortError") {
+    return "The camera is in use by another app. Close the camera app and any "
+         + "video call, then try again.";
+  }
+  return "The camera could not start: " + (e?.message || name || "unknown error");
+}
 
-    const tick = async () => {
-      if (panel.hidden) return;
-      try {
-        const found = await detector.detect(video);
-        if (found.length) {
-          $("barcode").value = found[0].rawValue;
-          onBarcodeInput();
-          navigator.vibrate?.(60);
-          stop();
-          return;
-        }
-      } catch { /* a frame that could not be read; try the next one */ }
-      requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
+/**
+ * What to say when the browser will not give this page a camera at all.
+ *
+ * Both remedies are real and neither is a workaround for a bug in this page —
+ * they are how browsers work. The scanner is listed first because in a shop it
+ * is the better answer anyway: faster than a phone camera, works in poor light,
+ * and needs no permission from anybody.
+ */
+function insecureContextHelp() {
+  return `<b>This browser will not open the camera on this address.</b>
+    A page has to be on <b>https</b> or <b>localhost</b> before any browser
+    allows it a camera — a local network address like this one does not count,
+    however private the network is. Nothing is broken and nothing on this page
+    can change it.
+    <br><br>
+    Two ways to scan anyway:
+    <br><br>
+    <b>1. Use a barcode scanner.</b> A USB or Bluetooth scanner types the digits
+    like a keyboard: tap the Barcode box first, then scan. No camera, no
+    permission, and faster than a phone.
+    <br><br>
+    <b>2. Trust this address in Chrome</b> — once per phone. Open
+    <span class="mono">chrome://flags/#unsafely-treat-insecure-origin-as-secure</span>,
+    type <span class="mono">${escapeHtml(location.origin)}</span> into the box,
+    set it to <b>Enabled</b>, and relaunch Chrome. The camera works after that.
+    <br><br>
+    Or type the digits — they are checked as you type, so a typo is caught.`;
+}
+
+/**
+ * What to say when the page IS on a secure address and there is still no reader.
+ *
+ * A different problem with the same symptom, and worth telling apart: iPhones,
+ * Firefox and desktop Chrome on Linux have no built-in barcode reader at all, so
+ * no permission and no address will produce one. Blaming the address there would
+ * send somebody chasing a setting that does not exist.
+ */
+function noReaderHelp() {
+  return `<b>This browser has no built-in barcode reader.</b>
+    Chrome on Android has one; Safari on iPhone and Firefox do not, and no
+    setting adds it.
+    <br><br>
+    <b>Use a barcode scanner instead</b> — a USB or Bluetooth one types the
+    digits like a keyboard: tap the Barcode box first, then scan. It is faster
+    than a phone camera and works in bad light.
+    <br><br>
+    Or type the digits. They are checked as you type, so a typo is caught before
+    it is saved.`;
+}
+
+let scanStream = null;
+
+function stopScan() {
+  const video = $("scanVideo");
+  $("scanPanel").hidden = true;
+  video.pause();
+  video.srcObject = null;
+  scanStream?.getTracks().forEach(t => t.stop());
+  scanStream = null;
+}
+
+async function startScan() {
+  const panel  = $("scanPanel");
+  const video  = $("scanVideo");
+  const status = $("scanStatus");
+  const photo  = $("scanPhotoLabel");
+
+  // Open the panel FIRST. Everything below can fail, and a message inside an
+  // open panel is read; a toast that appears and vanishes behind a keyboard is
+  // not. This is also why the old version looked like a dead camera: the panel
+  // only appeared after the camera had already started.
+  panel.hidden = false;
+  video.hidden = true;
+  photo.hidden = true;
+  status.className = "scanStatus";
+  status.textContent = "Starting the camera…";
+
+  // No reader at all has two quite different causes, and telling them apart is
+  // the difference between a person changing a setting that helps and chasing
+  // one that does not exist.
+  const detector = makeDetector();
+  if (!detector) {
+    status.className = "scanStatus warn";
+    status.innerHTML = window.isSecureContext ? noReaderHelp() : insecureContextHelp();
+    return;
+  }
+
+  // The photo route works whenever the reader itself does — the file input opens
+  // the phone's camera APP, which is not governed by the camera permission this
+  // page would need.
+  photo.hidden = false;
+
+  if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+    status.className = "scanStatus warn";
+    status.innerHTML = insecureContextHelp();
+    return;
+  }
+
+  try {
+    scanStream = await navigator.mediaDevices.getUserMedia({
+      // "ideal", not "exact": a laptop has only a front camera, and demanding
+      // the rear one there fails outright instead of using what exists.
+      video: { facingMode: { ideal: "environment" } },
+    });
   } catch (e) {
-    stream?.getTracks().forEach(t => t.stop());
-    panel.hidden = true;
-    toast("error", "Camera not available: " + e.message);
+    status.className = "scanStatus warn";
+    status.textContent = cameraErrorText(e);
+    return;
+  }
+
+  video.hidden = false;
+  video.srcObject = scanStream;
+  try {
+    await video.play();
+    status.textContent = "Point the camera at the barcode.";
+  } catch {
+    // Some browsers refuse to play without a gesture, even a muted stream.
+    status.textContent = "Tap the picture to start the camera.";
+    video.onclick = () => video.play().then(() => {
+      status.textContent = "Point the camera at the barcode.";
+    });
+  }
+
+  const tick = async () => {
+    if (panel.hidden || !scanStream) return;
+    try {
+      const found = await detector.detect(video);
+      if (found.length) {
+        acceptScanned(found[0].rawValue);
+        return;
+      }
+    } catch { /* a frame that could not be read; try the next one */ }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+/** A barcode came back from the camera or from a photo. */
+function acceptScanned(value) {
+  $("barcode").value = value;
+  onBarcodeInput();
+  navigator.vibrate?.(60);
+  stopScan();
+  toast("ok", "Scanned " + groupBarcode(value));
+}
+
+/**
+ * Read a barcode out of one photo.
+ *
+ * This is the route that survives everything above: `capture="environment"`
+ * hands the job to the phone's own camera app, so no camera permission is asked
+ * of the page and no live stream is needed. It still needs the browser's reader,
+ * which is the one part that cannot be worked around here.
+ */
+async function scanFromPhoto(file) {
+  const status = $("scanStatus");
+  const detector = makeDetector();
+  if (!detector || !file) return;
+
+  status.className = "scanStatus";
+  status.textContent = "Reading the picture…";
+  try {
+    const bitmap = await createImageBitmap(file);
+    const found = await detector.detect(bitmap);
+    bitmap.close?.();
+    if (found.length) { acceptScanned(found[0].rawValue); return; }
+    status.className = "scanStatus warn";
+    status.textContent = "No barcode found in that picture. Fill the frame with "
+                       + "the barcode, hold steady, and try again.";
+  } catch (e) {
+    status.className = "scanStatus warn";
+    status.textContent = "That picture could not be read: " + (e?.message || "unknown error");
   }
 }
 
@@ -508,13 +687,21 @@ window.addEventListener("DOMContentLoaded", () => {
     if (code) { $("barcode").value = code; onBarcodeInput(); }
   });
 
-  // The camera button only exists where the browser can actually read a barcode.
-  if ("BarcodeDetector" in window) {
-    $("scanBtn").hidden = false;
-    $("scanBtn").addEventListener("click", startScan);
-  } else {
-    $("scanHint").textContent = "Type the barcode — this browser cannot scan. "
-      + "Chrome on Android can.";
+  // The Scan button is always shown, even where the browser will refuse the
+  // camera. Pressing it is how somebody finds out WHY — hiding it left a person
+  // in a stockroom deciding their phone was broken.
+  $("scanBtn").hidden = false;
+  $("scanBtn").addEventListener("click", startScan);
+  $("scanClose").addEventListener("click", stopScan);
+  $("scanPhoto").addEventListener("change", async (ev) => {
+    const file = ev.target.files?.[0];
+    ev.target.value = "";
+    if (file) await scanFromPhoto(file);
+  });
+
+  if (!("BarcodeDetector" in window)) {
+    $("scanHint").textContent = "Camera scanning needs a secure address — tap "
+      + "Scan to see the two ways round it. Typing the digits always works.";
   }
 
   $("photo").addEventListener("change", async (ev) => {
