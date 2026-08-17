@@ -22,6 +22,21 @@
 
 * { box-sizing: border-box; }
 
+/* ── hidden must actually hide ─────────────────────────────────────────────────
+ * The `hidden` attribute is nothing but `display: none` in the browser's own
+ * stylesheet, so ANY rule here that sets display beats it — and loses silently.
+ *
+ * That is not a hypothetical. The scan overlay is `position: fixed; inset: 0;
+ * display: flex`, and it covered the whole page from the moment it loaded,
+ * including the sign-in form, while carrying the `hidden` attribute the entire
+ * time. Every DOM check agreed it was hidden. It was on top of everything.
+ *
+ * So this rule comes first, and !important is the point of it: the whole page
+ * shows and hides things by toggling `hidden`, and every one of those toggles
+ * depends on this line.
+ */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   background: var(--bg);
